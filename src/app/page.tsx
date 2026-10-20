@@ -42,7 +42,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ p
             </h1>
             <p className="mt-2 max-w-xl text-muted">
               7 KOLs, 7 wallets Solana publics, un seul gagnant : celui qui réalise le plus gros PnL sur la période.
-              Achète des parts Oui / Non, chaque part gagnante vaut 1 $.
+              Mise sur ton KOL : s&apos;il gagne, toute la cagnotte est partagée entre ceux qui ont misé sur lui.
             </p>
             <div className="mt-5 flex flex-wrap items-center gap-3">
               <Link href={`/market/${featured.slug}`} className="btn-gold px-5 py-3 text-base">
@@ -58,7 +58,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ p
           <div className="card p-5 md:w-64">
             <Countdown to={featured.closesAt} frozenMs={featured.chronoFrozenMs} />
             <div className="mt-4 flex justify-between border-t border-line pt-3 text-sm">
-              <span className="text-muted">Pool</span>
+              <span className="text-muted">Cagnotte</span>
               <span className="mono font-bold">{usd(featured.pool, { compact: true })}</span>
             </div>
             <div className="flex justify-between text-sm">

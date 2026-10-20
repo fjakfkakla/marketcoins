@@ -18,9 +18,9 @@ type MarketRow = {
   id: string; slug: string; title: string; question: string; category: string; period: Period;
   challenge_no: number | null; starts_at: string; ends_at: string; closes_at: string; status: string;
   rules: string[]; featured: boolean;
-  outcomes: { id: string; kol_id: string; position: number; prob: number; change_24h: number }[];
+  outcomes: { id: string; kol_id: string; position: number; pool_usd: number; change_24h: number }[];
 };
-type StatsRow = { market_id: string; volume_usd: number; pool_usd: number; traders: number };
+type StatsRow = { market_id: string; volume_usd: number; traders: number };
 
 const num = (v: unknown) => (v === null || v === undefined ? 0 : Number(v));
 
@@ -83,10 +83,10 @@ async function loadMarkets(): Promise<Market[]> {
     const [kols, markets, stats] = await Promise.all([
       getKols(),
       sb.from("markets")
-        .select("id,slug,title,question,category,period,challenge_no,starts_at,ends_at,closes_at,status,rules,featured,outcomes(id,kol_id,position,prob,change_24h)")
+        .select("id,slug,title,question,category,period,challenge_no,starts_at,ends_at,closes_at,status,rules,featured,outcomes(id,kol_id,position,pool_usd,change_24h)")
         .neq("status", "DRAFT")
         .order("challenge_no"),
-      sb.from("market_stats").select("market_id,volume_usd,pool_usd,traders"),
+      sb.from("market_stats").select("market_id,volume_usd,traders"),
     ]);
     if (markets.error || !markets.data?.length) throw markets.error ?? new Error("aucun marché");
     const kolById = new Map(kols.map((k) => [k.id, k]));
@@ -94,10 +94,11 @@ async function loadMarkets(): Promise<Market[]> {
 
     return (markets.data as unknown as MarketRow[]).map((m) => {
       const st = statFor(m.id);
+      // Cagnotte par KOL (outcomes.pool_usd, maintenue par trigger sur `bets`).
       const outcomes: Outcome[] = m.outcomes
-        .map((o) => ({ kol: kolById.get(o.kol_id), prob: num(o.prob), change24h: num(o.change_24h) }))
+        .map((o) => ({ kol: kolById.get(o.kol_id), pool: num(o.pool_usd), change24h: num(o.change_24h) }))
         .filter((o): o is Outcome => Boolean(o.kol))
-        .sort((a, b) => b.prob - a.prob);
+        .sort((a, b) => b.pool - a.pool);
       return {
         slug: m.slug,
         title: m.title,
@@ -109,7 +110,7 @@ async function loadMarkets(): Promise<Market[]> {
         endsAt: m.ends_at,
         closesAt: m.closes_at,
         volume: num(st?.volume_usd),
-        pool: num(st?.pool_usd),
+        pool: outcomes.reduce((t, o) => t + o.pool, 0),
         traders: num(st?.traders),
         rules: m.rules ?? [],
         featured: m.featured,

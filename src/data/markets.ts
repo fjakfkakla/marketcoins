@@ -4,9 +4,9 @@ export type Period = "7D" | "30D";
 
 export type Outcome = {
   kol: Kol;
-  /** Probabilité implicite, 0..1 */
-  prob: number;
-  /** Variation de la probabilité sur 24h, en points */
+  /** Cagnotte placée sur ce KOL, en USD (mises nettes de frais). */
+  pool: number;
+  /** Variation de la part de cagnotte sur 24h, en points */
   change24h: number;
 };
 
@@ -22,6 +22,7 @@ export type Market = {
   endsAt: string;
   closesAt: string;
   volume: number;
+  /** Cagnotte totale du défi : somme des `outcomes[].pool`. */
   pool: number;
   traders: number;
   rules: string[];
@@ -31,14 +32,18 @@ export type Market = {
   chronoFrozenMs?: number;
 };
 
-function probsFromPnl(period: Period): Outcome[] {
+/**
+ * Répartition de démo de la cagnotte entre les KOLs : les parieurs ont surtout
+ * misé sur ceux qui ont le meilleur PnL, sans que le leader écrase tout.
+ * Avec un backend, chaque cagnotte est la somme réelle des mises.
+ */
+function poolsFromPnl(period: Period, total: number): Outcome[] {
   const key = period === "7D" ? "pnl7d" : "pnl30d";
-  // Softmax-ish weighting so the leader is favourite without being a lock.
   const weights = KOLS.map((k) => Math.pow(Math.max(k[key], 1000), 1.35));
-  const total = weights.reduce((a, b) => a + b, 0);
+  const sum = weights.reduce((a, b) => a + b, 0);
   const changes = [2.4, -0.8, 1.1, -1.6, 0.6, -0.9, -0.8];
-  return KOLS.map((kol, i) => ({ kol, prob: weights[i] / total, change24h: changes[i] }))
-    .sort((a, b) => b.prob - a.prob);
+  return KOLS.map((kol, i) => ({ kol, pool: Math.round((total * weights[i]) / sum), change24h: changes[i] }))
+    .sort((a, b) => b.pool - a.pool);
 }
 
 export const MARKETS: Market[] = [
@@ -59,10 +64,11 @@ export const MARKETS: Market[] = [
     rules: [
       "Le KOL gagnant est celui dont le wallet Solana listé affiche le PnL réalisé le plus élevé entre le lundi 13 octobre 00:00 et le dimanche 19 octobre 20:00 (heure de Paris).",
       "Le PnL est mesuré en USD sur les ventes effectivement réalisées, hors positions ouvertes. Source : données on-chain publiques du wallet.",
-      "Les mises ferment au début de la période. Pendant le défi, les positions peuvent être revendues au prix du marché.",
+      "Chaque mise rejoint la cagnotte du défi après 2 % de frais. À la résolution, toute la cagnotte est partagée entre ceux qui ont misé sur le KOL gagnant, au prorata de leur mise.",
+      "Les mises ferment au début de la période et sont définitives : pas de revente. Les cotes affichées sont la répartition actuelle de la cagnotte, le gain final dépend de la cagnotte à la clôture.",
       "En cas d'égalité, de wallet changé ou de données indisponibles, le marché est annulé et toutes les mises sont remboursées.",
     ],
-    outcomes: probsFromPnl("7D"),
+    outcomes: poolsFromPnl("7D", 31940),
   },
   {
     slug: "kol-top-profit-30d",
@@ -80,15 +86,16 @@ export const MARKETS: Market[] = [
     rules: [
       "Le KOL gagnant est celui dont le wallet Solana listé affiche le PnL réalisé le plus élevé sur 30 jours, du 13 octobre 00:00 au 11 novembre 20:00 (heure de Paris).",
       "Le PnL est mesuré en USD sur les ventes réalisées, hors positions ouvertes.",
+      "Chaque mise rejoint la cagnotte après 2 % de frais ; la cagnotte est partagée entre les mises sur le KOL gagnant, au prorata. Les mises sont définitives.",
       "En cas d'égalité ou de données indisponibles, le marché est annulé et remboursé.",
     ],
-    outcomes: probsFromPnl("30D"),
+    outcomes: poolsFromPnl("30D", 12300),
   },
 ];
 
 export const marketBySlug = (slug: string) => MARKETS.find((m) => m.slug === slug);
 
-/** Marchés secondaires "Oui / Non", style Polymarket, pour remplir la grille. */
+/** Marchés secondaires "Oui / Non" : même cagnotte, mais à deux résultats. `yes` = part de la cagnotte sur Oui. */
 export type BinaryMarket = {
   slug: string;
   title: string;

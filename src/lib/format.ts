@@ -12,6 +12,13 @@ export const usd = (n: number, opts: { compact?: boolean; sign?: boolean } = {})
 export const pct = (p: number) => `${Math.round(p * 100)}%`;
 export const cents = (p: number) => `${Math.round(p * 100)}¢`;
 
+/** Multiplicateur de gain : x1,8 · x12 · « — » si personne n'a encore misé. */
+export const mult = (x: number) => {
+  if (!Number.isFinite(x) || x <= 0) return "—";
+  const digits = x >= 10 ? 0 : x >= 3 ? 1 : 2;
+  return `x${x.toLocaleString("fr-FR", { minimumFractionDigits: digits, maximumFractionDigits: digits })}`;
+};
+
 export const shortWallet = (w: string) => `${w.slice(0, 4)}…${w.slice(-4)}`;
 
 export const dateFr = (iso: string, opts: Intl.DateTimeFormatOptions = {}) =>

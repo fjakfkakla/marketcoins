@@ -8,21 +8,27 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState } 
  * et une lecture du solde USDC on-chain. Aucune clé privée ne transite ici.
  */
 
+/** Une mise parimutuel : définitive, elle rejoint la cagnotte du KOL choisi. */
 export type Position = {
   id: string;
   marketSlug: string;
   marketTitle: string;
-  outcome: string;
-  side: "OUI" | "NON";
-  shares: number;
-  avgPrice: number;
-  currentPrice: number;
+  kolId: string;
+  kolName: string;
+  /** Montant débité du solde. */
+  amount: number;
+  /** Frais (2 %) prélevés sur le montant. */
+  fee: number;
+  /** Mise nette, entrée dans la cagnotte. */
+  stake: number;
+  /** Gain estimé au moment de la mise, si le KOL gagne. */
+  payoutAtBet: number;
   createdAt: number;
 };
 
 export type Activity = {
   id: string;
-  type: "DEPOT" | "RETRAIT" | "ACHAT" | "VENTE";
+  type: "DEPOT" | "RETRAIT" | "MISE";
   label: string;
   amount: number;
   at: number;
@@ -44,12 +50,13 @@ type WalletState = {
   disconnect: () => void;
   deposit: (amount: number) => void;
   withdraw: (amount: number) => boolean;
-  buy: (p: Omit<Position, "id" | "createdAt">, cost: number) => boolean;
-  sell: (positionId: string) => void;
+  /** Place une mise. Renvoie false si le solde est insuffisant. */
+  bet: (p: Omit<Position, "id" | "createdAt">) => boolean;
 };
 
 const Ctx = createContext<WalletState | null>(null);
-const KEY = "marketcoins.wallet.v1";
+// v2 : passage du modèle « parts à prix fixe » au modèle parimutuel (mises).
+const KEY = "marketcoins.wallet.v2";
 
 const DEMO_ADDRESS = "7Gx2kQmFpZ9vN4tLd8sH3rWcA1eB6yU5oP0jK2nM9xVq";
 
@@ -124,23 +131,12 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
         setModal(null);
         return true;
       },
-      buy: (p, cost) => {
-        if (cost > balance) return false;
-        setBalance((b) => Math.round((b - cost) * 100) / 100);
+      bet: (p) => {
+        if (p.amount <= 0 || p.amount > balance) return false;
+        setBalance((b) => Math.round((b - p.amount) * 100) / 100);
         setPositions((prev) => [{ ...p, id: crypto.randomUUID(), createdAt: Date.now() }, ...prev]);
-        log({ type: "ACHAT", label: `${p.side} · ${p.outcome}`, amount: -cost });
+        log({ type: "MISE", label: `Mise sur ${p.kolName}`, amount: -p.amount });
         return true;
-      },
-      sell: (id) => {
-        setPositions((prev) => {
-          const pos = prev.find((x) => x.id === id);
-          if (pos) {
-            const proceeds = Math.round(pos.shares * pos.currentPrice * 100) / 100;
-            setBalance((b) => Math.round((b + proceeds) * 100) / 100);
-            log({ type: "VENTE", label: `${pos.side} · ${pos.outcome}`, amount: proceeds });
-          }
-          return prev.filter((x) => x.id !== id);
-        });
       },
     }),
     [ready, connected, provider, balance, positions, activity, modal, log],

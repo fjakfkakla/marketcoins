@@ -33,9 +33,10 @@ const SECTIONS: { id: string; title: string; body: string[] }[] = [
     title: "4. Fonctionnement des marchés",
     body: [
       "Chaque marché définit une question, une période, une liste de résultats possibles et une règle de résolution publiée avant l'ouverture. Cette règle fait foi.",
-      "Une part « Oui » sur un résultat vaut 1 USDC si ce résultat est déclaré gagnant, 0 sinon. Une part « Non » vaut l'inverse. Les prix affichés reflètent la probabilité implicite du marché et évoluent en continu.",
-      "Les mises ferment à la date indiquée. Les positions peuvent être revendues au prix du marché jusqu'à la résolution, sous réserve de liquidité.",
-      "Des frais de 2 % sont prélevés sur chaque achat. Les frais de réseau Solana restent à votre charge.",
+      "Les marchés fonctionnent en parimutuel : chaque mise, après frais, rejoint la cagnotte du résultat choisi. À la résolution, la cagnotte totale du marché est répartie entre les mises placées sur le résultat gagnant, au prorata de leur montant. Les mises sur les autres résultats sont perdues.",
+      "Les cotes et gains affichés avant la clôture sont des estimations fondées sur la cagnotte au moment de la consultation. Le gain effectif dépend de la répartition finale de la cagnotte à la clôture et peut être inférieur ou supérieur à l'estimation.",
+      "Les mises ferment à la date indiquée et sont définitives : elles ne peuvent être ni annulées ni revendues.",
+      "Des frais de 2 % sont prélevés sur chaque mise. Les frais de réseau Solana restent à votre charge.",
     ],
   },
   {
