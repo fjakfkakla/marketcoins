@@ -7,7 +7,8 @@
     "build": "next build",
     "start": "next start -p ${PORT:-3000}",
     "lint": "eslint",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test:program": "anchor test --validator legacy"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.117.3",
@@ -18,13 +19,22 @@
     "zod": "^4.6.5"
   },
   "devDependencies": {
+    "@anchor-lang/core": "^1.2.1",
+    "@solana/spl-token": "^0.4.15",
+    "@solana/web3.js": "^1.99.0",
     "@tailwindcss/turbopack": "^4",
+    "@types/bn.js": "^5.2.0",
+    "@types/chai": "^4.3.20",
+    "@types/mocha": "^10.0.10",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "chai": "^4.5.0",
     "eslint": "^9",
     "eslint-config-next": "16.4.0",
+    "mocha": "^11.8.0",
     "tailwindcss": "^4",
+    "ts-mocha": "^11.1.0",
     "typescript": "^5"
   }
 }

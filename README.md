@@ -4,7 +4,7 @@ Marché de prédiction sur les KOLs crypto. « Quel KOL fera le plus de profit s
 
 **Modèle parimutuel (cagnotte).** Chaque mise, après 2 % de frais, rejoint la cagnotte du KOL choisi. À la résolution, toute la cagnotte du défi est partagée entre les mises placées sur le KOL gagnant, au prorata. Pas de prix fixe, pas de revente : la « cote » affichée est la part de la cagnotte déjà placée sur un KOL, et le multiplicateur est ce que rapporterait 1 $ s'il gagnait maintenant. Le gain final dépend de la cagnotte à la clôture. La logique est dans `src/lib/parimutuel.ts`.
 
-**État actuel : interface complète avec données mock.** Aucun backend, aucun smart contract, aucune API : le wallet, le solde et les positions sont simulés côté navigateur (localStorage) pour valider le design et l'UX.
+**État actuel : interface complète avec données mock, et le programme Solana (Anchor) qui porte la cagnotte.** Le site n'est pas encore branché sur le programme : le wallet, le solde et les mises sont simulés côté navigateur (localStorage). Le programme vit dans `programs/marketcoins/` (voir son README), testé avec `anchor test`.
 
 ## Lancer en local
 
@@ -13,7 +13,7 @@ npm install
 npm run dev        # http://localhost:3000
 ```
 
-Autres commandes : `npm run build`, `npm start`, `npm run lint`, `npm run typecheck`.
+Autres commandes : `npm run build`, `npm start`, `npm run lint`, `npm run typecheck`, `npm run test:program` (tests du programme Solana, voir `programs/marketcoins/README.md`).
 
 ## Pages
 
@@ -36,6 +36,8 @@ src/lib/wallet.tsx      état wallet simulé (à remplacer par @solana/wallet-ad
 src/components/         Nav, cartes, graphique PnL, panneau de trade, modales, podium…
 src/app/                pages (App Router, Next 16)
 public/kols/            avatars des KOLs
+programs/marketcoins/   programme Solana (Anchor) : cagnotte parimutuel on-chain
+tests/marketcoins.ts    tests du programme (anchor test)
 ```
 
 ## Base de données (Supabase)
@@ -54,8 +56,8 @@ RLS : lecture publique des données de marché et des mises, aucune écriture c�
 
 1. **Wallet réel** : `@solana/wallet-adapter-react` + Phantom/Solflare/Backpack, lecture du solde USDC.
 2. **Données KOL réelles** : cron qui lit le PnL des wallets (Solana Tracker, Birdeye ou kolscan) et l'écrit dans Supabase.
-3. **Smart contract** : programme Anchor parimutuel (dépôt des mises dans une cagnotte par défi, résolution par multisig, retrait des gains au prorata).
-4. **Backend Supabase** : écriture des `bets` depuis le serveur à partir des transactions on-chain ; calcul des gains à la résolution.
+3. **Brancher le site sur le programme** : `place_bet` depuis le panneau de mise, lecture de `Market.pools` pour les cotes, `claim` depuis Mon compte. Déploiement devnet puis mainnet, résolveur = multisig Squads.
+4. **Indexeur** : écouter les événements du programme (`BetPlaced`, `MarketResolved`…) et remplir `bets` / `outcomes.pool_usd` dans Supabase.
 5. **Déploiement** : Railway ou Vercel, variables d'environnement pour Supabase et le RPC Solana.
 
 ## Variables d'environnement
