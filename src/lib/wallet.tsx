@@ -1,149 +1,226 @@
 "use client";
 
-import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useState, useSyncExternalStore } from "react";
+import { Buffer } from "buffer";
+import { AnchorProvider, Program } from "@anchor-lang/core";
+import { PublicKey, SystemProgram } from "@solana/web3.js";
+import { TOKEN_PROGRAM_ID, createAssociatedTokenAccountIdempotentInstruction, getAccount } from "@solana/spl-token";
+import { WalletReadyState } from "@solana/wallet-adapter-base";
+import {
+  ConnectionProvider,
+  WalletProvider as AdapterWalletProvider,
+  useAnchorWallet,
+  useConnection,
+  useWallet as useAdapter,
+} from "@solana/wallet-adapter-react";
+import { RPC_URL, USDC_MINT } from "./solana/config";
+import {
+  BET_BETTOR_OFFSET,
+  IDL,
+  betPda,
+  marketPda,
+  rawToBet,
+  toUnits,
+  toUsd,
+  usdcAta,
+  vaultPda,
+  type MarketcoinsProgram,
+  type OnchainBet,
+} from "./solana/program";
+
+// web3.js et Anchor s'appuient sur Buffer, absent du navigateur.
+if (typeof window !== "undefined" && !window.Buffer) window.Buffer = Buffer;
 
 /**
- * État wallet côté client, mocké pour l'instant.
- * À remplacer par @solana/wallet-adapter (Phantom, Solflare, Backpack)
- * et une lecture du solde USDC on-chain. Aucune clé privée ne transite ici.
+ * Wallet Solana réel (Phantom, Solflare, Backpack… via Wallet Standard) et
+ * accès au programme Marketcoins. Le solde affiché est l'USDC du wallet ;
+ * les mises partent directement du wallet vers la cagnotte on-chain.
  */
 
-/** Une mise parimutuel : définitive, elle rejoint la cagnotte du KOL choisi. */
-export type Position = {
-  id: string;
-  marketSlug: string;
-  marketTitle: string;
-  kolId: string;
-  kolName: string;
-  /** Montant débité du solde. */
-  amount: number;
-  /** Frais (2 %) prélevés sur le montant. */
-  fee: number;
-  /** Mise nette, entrée dans la cagnotte. */
-  stake: number;
-  /** Gain estimé au moment de la mise, si le KOL gagne. */
-  payoutAtBet: number;
-  createdAt: number;
-};
+export type WalletOption = { name: string; icon: string; installed: boolean };
 
-export type Activity = {
-  id: string;
-  type: "DEPOT" | "RETRAIT" | "MISE";
-  label: string;
-  amount: number;
-  at: number;
-};
-
-type Modal = "connect" | "deposit" | "withdraw" | null;
+type Modal = "connect" | "receive" | null;
 
 type WalletState = {
+  /** Vrai après montage : avant, rien n'est connu du wallet (SSR). */
   ready: boolean;
   connected: boolean;
+  connecting: boolean;
   address: string | null;
+  /** Nom du wallet connecté. */
   provider: string | null;
+  /** Solde USDC du wallet. */
   balance: number;
-  positions: Position[];
-  activity: Activity[];
+  /** Mises on-chain du wallet, tous défis confondus. */
+  bets: OnchainBet[];
+  wallets: WalletOption[];
   modal: Modal;
   openModal: (m: Modal) => void;
-  connect: (provider: string) => void;
-  disconnect: () => void;
-  deposit: (amount: number) => void;
-  withdraw: (amount: number) => boolean;
-  /** Place une mise. Renvoie false si le solde est insuffisant. */
-  bet: (p: Omit<Position, "id" | "createdAt">) => boolean;
+  connect: (name: string) => Promise<void>;
+  disconnect: () => Promise<void>;
+  refresh: () => Promise<void>;
+  /** Mise de `amount` USDC sur le résultat `outcome` du défi `marketId`. Renvoie la signature. */
+  placeBet: (marketId: number, outcome: number, amount: number) => Promise<string>;
+  /** Retire le gain ou le remboursement d'une mise. Renvoie la signature. */
+  claim: (bet: OnchainBet) => Promise<string>;
+  /** Vrai si le programme est utilisable (mint USDC configuré). */
+  enabled: boolean;
 };
 
 const Ctx = createContext<WalletState | null>(null);
-// v2 : passage du modèle « parts à prix fixe » au modèle parimutuel (mises).
-const KEY = "marketcoins.wallet.v2";
-
-const DEMO_ADDRESS = "7Gx2kQmFpZ9vN4tLd8sH3rWcA1eB6yU5oP0jK2nM9xVq";
 
 export function WalletProvider({ children }: { children: React.ReactNode }) {
-  const [ready, setReady] = useState(false);
-  const [connected, setConnected] = useState(false);
-  const [provider, setProvider] = useState<string | null>(null);
-  const [balance, setBalance] = useState(0);
-  const [positions, setPositions] = useState<Position[]>([]);
-  const [activity, setActivity] = useState<Activity[]>([]);
+  return (
+    <ConnectionProvider endpoint={RPC_URL} config={{ commitment: "confirmed" }}>
+      <AdapterWalletProvider wallets={[]} autoConnect>
+        <Inner>{children}</Inner>
+      </AdapterWalletProvider>
+    </ConnectionProvider>
+  );
+}
+
+function Inner({ children }: { children: React.ReactNode }) {
+  const adapter = useAdapter();
+  const anchorWallet = useAnchorWallet();
+  const { connection } = useConnection();
+  // Vrai seulement après hydratation : le serveur ne sait rien du wallet.
+  const ready = useSyncExternalStore(noopSubscribe, () => true, () => false);
   const [modal, setModal] = useState<Modal>(null);
+  const [balance, setBalance] = useState(0);
+  const [bets, setBets] = useState<OnchainBet[]>([]);
 
-  // Hydrate from localStorage after mount (never during SSR) to avoid markup mismatches.
-  useEffect(() => {
-    const id = requestAnimationFrame(() => {
-      try {
-        const raw = localStorage.getItem(KEY);
-        if (raw) {
-          const s = JSON.parse(raw);
-          setConnected(!!s.connected);
-          setProvider(s.provider ?? null);
-          setBalance(Number(s.balance) || 0);
-          setPositions(Array.isArray(s.positions) ? s.positions : []);
-          setActivity(Array.isArray(s.activity) ? s.activity : []);
-        }
-      } catch {}
-      setReady(true);
-    });
-    return () => cancelAnimationFrame(id);
-  }, []);
+  const enabled = Boolean(USDC_MINT);
+  const mint = useMemo(() => (enabled ? new PublicKey(USDC_MINT) : null), [enabled]);
+  const pubkey = adapter.publicKey;
 
-  useEffect(() => {
-    if (!ready) return;
+  const program = useMemo<MarketcoinsProgram | null>(() => {
+    if (!anchorWallet) return null;
+    const provider = new AnchorProvider(connection, anchorWallet, { commitment: "confirmed" });
+    return new Program(IDL, provider);
+  }, [anchorWallet, connection]);
+
+  /** Lit le solde USDC et les mises du wallet, sans toucher à l'état React. */
+  const load = useCallback(async (): Promise<{ balance: number; bets: OnchainBet[] }> => {
+    if (!pubkey || !mint) return { balance: 0, bets: [] };
+    let bal = 0;
     try {
-      localStorage.setItem(KEY, JSON.stringify({ connected, provider, balance, positions, activity }));
-    } catch {}
-  }, [ready, connected, provider, balance, positions, activity]);
+      const acc = await getAccount(connection, usdcAta(pubkey, mint));
+      bal = toUsd(acc.amount);
+    } catch {
+      bal = 0; // pas encore de compte USDC
+    }
+    let list: OnchainBet[] = [];
+    if (program) {
+      try {
+        const all = await program.account.bet.all([{ memcmp: { offset: BET_BETTOR_OFFSET, bytes: pubkey.toBase58() } }]);
+        list = all.map((a) => rawToBet(a.publicKey, a.account));
+      } catch (e) {
+        console.error("[wallet] lecture des mises :", (e as Error).message);
+      }
+    }
+    return { balance: bal, bets: list };
+  }, [pubkey, mint, connection, program]);
 
-  const log = useCallback((a: Omit<Activity, "id" | "at">) => {
-    setActivity((prev) => [{ ...a, id: crypto.randomUUID(), at: Date.now() }, ...prev].slice(0, 50));
-  }, []);
+  const refresh = useCallback(async () => {
+    const r = await load();
+    setBalance(r.balance);
+    setBets(r.bets);
+  }, [load]);
+
+  // Recharge à chaque changement de wallet ; ignore les réponses d'un wallet déjà remplacé.
+  useEffect(() => {
+    let alive = true;
+    load().then((r) => {
+      if (!alive) return;
+      setBalance(r.balance);
+      setBets(r.bets);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [load]);
+
+  const wallets = useMemo<WalletOption[]>(
+    () =>
+      adapter.wallets.map((w) => ({
+        name: w.adapter.name,
+        icon: w.adapter.icon,
+        installed: w.readyState === WalletReadyState.Installed || w.readyState === WalletReadyState.Loadable,
+      })),
+    [adapter.wallets],
+  );
 
   const value = useMemo<WalletState>(
     () => ({
       ready,
-      connected,
-      address: connected ? DEMO_ADDRESS : null,
-      provider,
+      connected: adapter.connected,
+      connecting: adapter.connecting,
+      address: pubkey?.toBase58() ?? null,
+      provider: adapter.wallet?.adapter.name ?? null,
       balance,
-      positions,
-      activity,
+      bets,
+      wallets,
       modal,
       openModal: setModal,
-      connect: (p) => {
-        setProvider(p);
-        setConnected(true);
+      enabled,
+      connect: async (name) => {
+        const w = adapter.wallets.find((x) => x.adapter.name === name);
+        if (!w) throw new Error(`Wallet inconnu : ${name}`);
+        adapter.select(w.adapter.name);
+        // `select` ne connecte pas tout de suite : on ouvre le wallet directement puisque l'utilisateur a cliqué.
+        await w.adapter.connect();
         setModal(null);
       },
-      disconnect: () => {
-        setConnected(false);
-        setProvider(null);
+      disconnect: () => adapter.disconnect(),
+      refresh,
+      placeBet: async (marketId, outcome, amount) => {
+        if (!program || !pubkey || !mint) throw new Error("Wallet non connecté");
+        const market = marketPda(marketId);
+        const ata = usdcAta(pubkey, mint);
+        const sig = await program.methods
+          .placeBet(outcome, toUnits(amount))
+          .accountsPartial({
+            bettor: pubkey,
+            market,
+            bet: betPda(market, pubkey, outcome),
+            bettorTokenAccount: ata,
+            vault: vaultPda(market),
+            tokenProgram: TOKEN_PROGRAM_ID,
+            systemProgram: SystemProgram.programId,
+          })
+          // Crée le compte USDC du wallet s'il n'existe pas encore (sans effet sinon).
+          .preInstructions([createAssociatedTokenAccountIdempotentInstruction(pubkey, ata, pubkey, mint)])
+          .rpc();
+        await refresh();
+        return sig;
       },
-      deposit: (amount) => {
-        setBalance((b) => Math.round((b + amount) * 100) / 100);
-        log({ type: "DEPOT", label: "Dépôt USDC (Solana)", amount });
-        setModal(null);
-      },
-      withdraw: (amount) => {
-        if (amount > balance) return false;
-        setBalance((b) => Math.round((b - amount) * 100) / 100);
-        log({ type: "RETRAIT", label: "Retrait USDC vers le wallet", amount: -amount });
-        setModal(null);
-        return true;
-      },
-      bet: (p) => {
-        if (p.amount <= 0 || p.amount > balance) return false;
-        setBalance((b) => Math.round((b - p.amount) * 100) / 100);
-        setPositions((prev) => [{ ...p, id: crypto.randomUUID(), createdAt: Date.now() }, ...prev]);
-        log({ type: "MISE", label: `Mise sur ${p.kolName}`, amount: -p.amount });
-        return true;
+      claim: async (bet) => {
+        if (!program || !pubkey || !mint) throw new Error("Wallet non connecté");
+        const market = new PublicKey(bet.market);
+        const ata = usdcAta(pubkey, mint);
+        const sig = await program.methods
+          .claim()
+          .accountsPartial({
+            bettor: pubkey,
+            market,
+            bet: new PublicKey(bet.address),
+            bettorTokenAccount: ata,
+            vault: vaultPda(market),
+            tokenProgram: TOKEN_PROGRAM_ID,
+          })
+          .preInstructions([createAssociatedTokenAccountIdempotentInstruction(pubkey, ata, pubkey, mint)])
+          .rpc();
+        await refresh();
+        return sig;
       },
     }),
-    [ready, connected, provider, balance, positions, activity, modal, log],
+    [ready, adapter, pubkey, balance, bets, wallets, modal, enabled, refresh, program, mint],
   );
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }
+
+const noopSubscribe = () => () => {};
 
 export function useWallet() {
   const v = useContext(Ctx);

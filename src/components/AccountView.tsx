@@ -1,19 +1,30 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo } from "react";
-import { ArrowDownToLine, ArrowUpFromLine, LogOut, ShieldCheck, Wallet } from "lucide-react";
+import { useState } from "react";
+import { useRouter } from "next/navigation";
+import { ArrowDownToLine, ExternalLink, Loader2, LogOut, ShieldCheck, Wallet } from "lucide-react";
 import type { Market } from "@/data/markets";
 import { useWallet } from "@/lib/wallet";
 import { mult, pct, shortWallet, usd } from "@/lib/format";
-import { currentPayout, share, withStakes } from "@/lib/parimutuel";
+import { share } from "@/lib/parimutuel";
+import { explorerUrl } from "@/lib/solana/config";
+import { betPayout, betState, type BetState, type OnchainBet } from "@/lib/solana/program";
 import { CopyButton } from "./CopyButton";
+import { humanError } from "./TradePanel";
+
+const STATE_LABEL: Record<BetState, string> = {
+  pending: "En cours",
+  claimable: "Gagnée",
+  refundable: "Remboursable",
+  lost: "Perdue",
+};
 
 export function AccountView({ markets }: { markets: Market[] }) {
   const w = useWallet();
-
-  // Cagnottes avec les mises locales de l'utilisateur incluses, pour estimer les gains du jour.
-  const live = useMemo(() => new Map(markets.map((m) => [m.slug, withStakes(m, w.positions)])), [markets, w.positions]);
+  const router = useRouter();
+  const [busy, setBusy] = useState<string | null>(null);
+  const [msg, setMsg] = useState<{ ok: boolean; text: string; sig?: string } | null>(null);
 
   if (!w.ready) return null;
 
@@ -22,20 +33,41 @@ export function AccountView({ markets }: { markets: Market[] }) {
       <div className="card mx-auto max-w-md p-8 text-center fade-up">
         <div className="mx-auto mb-4 grid h-14 w-14 place-items-center rounded-2xl bg-gold-soft text-gold-3"><Wallet size={26} /></div>
         <h1 className="text-xl font-bold">Connecte ton wallet</h1>
-        <p className="mt-2 text-sm text-muted">Pour déposer des USDC, miser et suivre tes mises.</p>
+        <p className="mt-2 text-sm text-muted">Pour miser en USDC et suivre tes mises on-chain.</p>
         <button onClick={() => w.openModal("connect")} className="btn-gold mt-5 w-full py-3">Se connecter</button>
       </div>
     );
   }
 
-  const rows = w.positions.map((p) => {
-    const m = live.get(p.marketSlug);
-    const o = m?.outcomes.find((x) => x.kol.id === p.kolId);
-    const payout = m ? currentPayout(m, p.kolId, p.stake) : p.payoutAtBet;
-    return { p, m, share: m && o ? share(m, o) : 0, payout };
-  });
-  const wagered = rows.reduce((s, r) => s + r.p.amount, 0);
-  const estimated = rows.reduce((s, r) => s + r.payout, 0);
+  // Chaque mise on-chain retrouve son défi par l'adresse du compte Market.
+  const rows = w.bets
+    .map((bet) => {
+      const market = markets.find((m) => m.chain?.address === bet.market);
+      const chain = market?.chain;
+      const outcome = market?.outcomes.find((o) => o.index === bet.outcome);
+      const state: BetState = chain ? betState(chain, bet) : "pending";
+      const payout = chain ? (state === "refundable" ? bet.amount : state === "lost" ? 0 : betPayout(chain, bet)) : 0;
+      return { bet, market, chain, outcome, state, payout, sharePct: market && outcome ? share(market, outcome) : 0 };
+    })
+    .sort((a, b) => (a.state === "claimable" || a.state === "refundable" ? -1 : 0) - (b.state === "claimable" || b.state === "refundable" ? -1 : 0));
+
+  const wagered = rows.reduce((s, r) => s + r.bet.amount, 0);
+  const pending = rows.filter((r) => r.state === "pending").reduce((s, r) => s + r.payout, 0);
+  const claimable = rows.filter((r) => r.state === "claimable" || r.state === "refundable").reduce((s, r) => s + r.payout, 0);
+
+  const claim = async (bet: OnchainBet) => {
+    setMsg(null);
+    setBusy(bet.address);
+    try {
+      const sig = await w.claim(bet);
+      setMsg({ ok: true, text: "Retrait effectué, les USDC sont dans ton wallet.", sig });
+      router.refresh();
+    } catch (e) {
+      setMsg({ ok: false, text: humanError(e) });
+    } finally {
+      setBusy(null);
+    }
+  };
 
   return (
     <div className="space-y-6">
@@ -47,6 +79,7 @@ export function AccountView({ markets }: { markets: Market[] }) {
           <h1 className="text-2xl font-bold">Mon compte</h1>
           <div className="mono flex items-center gap-1 text-sm text-muted">
             {shortWallet(w.address!)} <CopyButton value={w.address!} />
+            <a href={explorerUrl("address", w.address!)} target="_blank" rel="noreferrer" className="hover:text-ink" title="Explorateur"><ExternalLink size={12} /></a>
             <span className="pill-muted ml-1 py-0">{w.provider}</span>
           </div>
         </div>
@@ -55,29 +88,40 @@ export function AccountView({ markets }: { markets: Market[] }) {
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4 stagger">
         <div className="card p-5" style={{ background: "linear-gradient(135deg,#fff,#fff6d6)" }}>
-          <div className="text-xs font-semibold uppercase tracking-wider text-muted">Solde disponible</div>
+          <div className="text-xs font-semibold uppercase tracking-wider text-muted">USDC dans le wallet</div>
           <div className="mono mt-1 text-3xl font-bold">{usd(w.balance)}</div>
           <div className="mt-3 flex gap-2">
-            <button onClick={() => w.openModal("deposit")} className="btn-gold flex-1 py-2"><ArrowDownToLine size={14} /> Déposer</button>
-            <button onClick={() => w.openModal("withdraw")} className="btn-ghost flex-1 py-2"><ArrowUpFromLine size={14} /> Retirer</button>
+            <button onClick={() => w.openModal("receive")} className="btn-gold flex-1 py-2"><ArrowDownToLine size={14} /> Recevoir</button>
+            <button onClick={() => w.refresh()} className="btn-ghost flex-1 py-2">Actualiser</button>
           </div>
         </div>
         <div className="card p-5">
           <div className="text-xs font-semibold uppercase tracking-wider text-muted">Total misé</div>
           <div className="mono mt-1 text-3xl font-bold">{usd(wagered)}</div>
-          <div className="mt-1 text-xs text-muted">{w.positions.length} mise(s) en cours</div>
+          <div className="mt-1 text-xs text-muted">{rows.length} mise(s) on-chain</div>
         </div>
         <div className="card p-5">
           <div className="text-xs font-semibold uppercase tracking-wider text-muted">Gain estimé</div>
-          <div className="mono mt-1 text-3xl font-bold text-up">{usd(estimated)}</div>
-          <div className="mt-1 text-xs text-muted">si tous tes KOLs gagnent, cagnotte actuelle</div>
+          <div className="mono mt-1 text-3xl font-bold text-up">{usd(pending)}</div>
+          <div className="mt-1 text-xs text-muted">mises en cours, si tous tes KOLs gagnent</div>
         </div>
         <div className="card p-5">
-          <div className="text-xs font-semibold uppercase tracking-wider text-muted">Profit estimé</div>
-          <div className={`mono mt-1 text-3xl font-bold ${estimated - wagered >= 0 ? "text-up" : "text-down"}`}>{usd(estimated - wagered, { sign: true })}</div>
-          <div className="mt-1 text-xs text-muted">varie jusqu&apos;à la clôture des mises</div>
+          <div className="text-xs font-semibold uppercase tracking-wider text-muted">À retirer</div>
+          <div className={`mono mt-1 text-3xl font-bold ${claimable > 0 ? "text-up" : ""}`}>{usd(claimable)}</div>
+          <div className="mt-1 text-xs text-muted">gains et remboursements disponibles</div>
         </div>
       </div>
+
+      {msg && (
+        <p className={`text-sm ${msg.ok ? "text-up" : "text-down"}`}>
+          {msg.text}
+          {msg.sig && (
+            <a href={explorerUrl("tx", msg.sig)} target="_blank" rel="noreferrer" className="ml-1 inline-flex items-center gap-0.5 underline">
+              transaction <ExternalLink size={11} />
+            </a>
+          )}
+        </p>
+      )}
 
       <section id="positions" className="card fade-up">
         <div className="flex items-center justify-between px-5 py-4">
@@ -96,53 +140,50 @@ export function AccountView({ markets }: { markets: Market[] }) {
                   <th className="px-3 py-2 text-right">Misé</th>
                   <th className="px-3 py-2 text-right">Dans la cagnotte</th>
                   <th className="px-3 py-2 text-right">Part du pool</th>
-                  <th className="px-3 py-2 text-right">Gain à la mise</th>
-                  <th className="px-3 py-2 text-right">Gain estimé</th>
-                  <th className="px-5 py-2 text-right">Cote</th>
+                  <th className="px-3 py-2 text-right">Gain</th>
+                  <th className="px-3 py-2 text-right">Cote</th>
+                  <th className="px-5 py-2 text-right">État</th>
                 </tr>
               </thead>
               <tbody>
-                {rows.map(({ p, share: sh, payout }) => (
-                  <tr key={p.id} className="border-t border-line">
-                    <td className="max-w-[260px] truncate px-5 py-3"><Link href={`/market/${p.marketSlug}`} className="font-medium hover:text-gold-3">{p.marketTitle}</Link></td>
-                    <td className="px-3 py-3"><span className="pill-gold">{p.kolName}</span></td>
-                    <td className="mono px-3 py-3 text-right">{usd(p.amount)}</td>
-                    <td className="mono px-3 py-3 text-right text-muted">{usd(p.stake)}</td>
-                    <td className="mono px-3 py-3 text-right">{pct(sh)}</td>
-                    <td className="mono px-3 py-3 text-right text-muted">{usd(p.payoutAtBet)}</td>
-                    <td className="mono px-3 py-3 text-right font-semibold text-up">{usd(payout)}</td>
-                    <td className="mono px-5 py-3 text-right font-semibold">{mult(p.amount > 0 ? payout / p.amount : 0)}</td>
+                {rows.map(({ bet, market, outcome, state, payout, sharePct }) => (
+                  <tr key={bet.address} className="border-t border-line">
+                    <td className="max-w-[260px] truncate px-5 py-3">
+                      {market ? (
+                        <Link href={`/market/${market.slug}`} className="font-medium hover:text-gold-3">{market.title}</Link>
+                      ) : (
+                        <a href={explorerUrl("address", bet.market)} target="_blank" rel="noreferrer" className="mono text-xs text-muted">{shortWallet(bet.market)}</a>
+                      )}
+                    </td>
+                    <td className="px-3 py-3"><span className="pill-gold">{outcome?.kol.name ?? `#${bet.outcome}`}</span></td>
+                    <td className="mono px-3 py-3 text-right">{usd(bet.amount)}</td>
+                    <td className="mono px-3 py-3 text-right text-muted">{usd(bet.stake)}</td>
+                    <td className="mono px-3 py-3 text-right">{pct(sharePct)}</td>
+                    <td className={`mono px-3 py-3 text-right font-semibold ${state === "lost" ? "text-muted" : "text-up"}`}>{usd(payout)}</td>
+                    <td className="mono px-3 py-3 text-right">{mult(bet.amount > 0 ? payout / bet.amount : 0)}</td>
+                    <td className="px-5 py-3 text-right">
+                      {state === "claimable" || state === "refundable" ? (
+                        <button onClick={() => claim(bet)} disabled={busy !== null} className="btn-gold py-1.5 text-xs">
+                          {busy === bet.address ? <Loader2 size={12} className="animate-spin" /> : null}
+                          {state === "claimable" ? "Retirer le gain" : "Me rembourser"}
+                        </button>
+                      ) : (
+                        <span className={state === "lost" ? "pill-muted" : "pill-up"}>{STATE_LABEL[state]}</span>
+                      )}
+                    </td>
                   </tr>
                 ))}
               </tbody>
             </table>
-            <p className="px-5 py-3 text-xs text-muted">Les mises sont définitives. Le gain estimé suit la cagnotte : il baisse quand d&apos;autres misent sur le même KOL, il monte quand ils misent ailleurs.</p>
+            <p className="px-5 py-3 text-xs text-muted">Les mises sont définitives. Le gain estimé suit la cagnotte jusqu&apos;à la clôture, puis 24 h de contestation après la résolution avant le retrait.</p>
           </div>
-        )}
-      </section>
-
-      <section className="card fade-up">
-        <h2 className="px-5 py-4 font-bold">Historique</h2>
-        {w.activity.length === 0 ? (
-          <p className="border-t border-line px-5 py-8 text-center text-sm text-muted">Aucune opération pour l&apos;instant.</p>
-        ) : (
-          <ul className="border-t border-line">
-            {w.activity.map((a) => (
-              <li key={a.id} className="flex items-center gap-3 border-b border-line px-5 py-3 text-sm last:border-b-0">
-                <span className={`pill py-0.5 ${a.type === "DEPOT" ? "bg-up-soft text-up" : a.type === "MISE" ? "bg-gold-soft text-gold-3" : "bg-cream-2 text-muted"}`}>{a.type}</span>
-                <span className="flex-1 truncate">{a.label}</span>
-                <span className={`mono font-semibold ${a.amount >= 0 ? "text-up" : "text-ink"}`}>{usd(a.amount, { sign: true })}</span>
-                <span className="hidden text-xs text-muted sm:inline">{new Date(a.at).toLocaleString("fr-FR", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}</span>
-              </li>
-            ))}
-          </ul>
         )}
       </section>
 
       <div className="flex items-start gap-3 rounded-2xl border border-line bg-white/60 p-4 text-xs text-muted fade-up">
         <ShieldCheck size={18} className="shrink-0 text-up" />
         <p>
-          Marketcoins est non-custodial : tes fonds restent dans un smart contract Solana et tu signes chaque opération avec ton wallet.
+          Marketcoins est non-custodial : les cagnottes vivent dans un programme Solana et tu signes chaque opération avec ton wallet.
           Nous ne stockons jamais de clé privée. <Link href="/conditions" className="underline">Conditions d&apos;utilisation</Link>.
         </p>
       </div>

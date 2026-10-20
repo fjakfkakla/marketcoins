@@ -2,6 +2,7 @@ import "server-only";
 import { KOLS, type Kol } from "@/data/kols";
 import { MARKETS, type Market, type Outcome, type Period } from "@/data/markets";
 import { applyLaunch } from "./launch";
+import { overlayOnchain } from "./solana/read";
 import { supabase } from "./supabase";
 
 /**
@@ -73,7 +74,7 @@ export async function getKols(): Promise<Kol[]> {
 }
 
 export async function getMarkets(): Promise<Market[]> {
-  return applyLaunch(await loadMarkets());
+  return applyLaunch(await overlayOnchain(await loadMarkets()));
 }
 
 async function loadMarkets(): Promise<Market[]> {
@@ -96,7 +97,7 @@ async function loadMarkets(): Promise<Market[]> {
       const st = statFor(m.id);
       // Cagnotte par KOL (outcomes.pool_usd, maintenue par trigger sur `bets`).
       const outcomes: Outcome[] = m.outcomes
-        .map((o) => ({ kol: kolById.get(o.kol_id), pool: num(o.pool_usd), change24h: num(o.change_24h) }))
+        .map((o) => ({ kol: kolById.get(o.kol_id), index: o.position, pool: num(o.pool_usd), change24h: num(o.change_24h) }))
         .filter((o): o is Outcome => Boolean(o.kol))
         .sort((a, b) => b.pool - a.pool);
       return {

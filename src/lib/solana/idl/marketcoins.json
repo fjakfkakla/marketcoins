@@ -1,0 +1,916 @@
+{
+  "address": "7dVSmyCyEK8dQrTiTqtyjLzTbhTwsL7ftRWyYTLkjUiM",
+  "metadata": {
+    "name": "marketcoins",
+    "version": "0.1.0",
+    "spec": "0.1.0",
+    "description": "Marketcoins · cagnotte parimutuel sur Solana"
+  },
+  "instructions": [
+    {
+      "name": "cancel",
+      "docs": [
+        "Annule le marché : toutes les mises deviennent remboursables, frais compris.",
+        "Possible tant que le marché est ouvert, ou pendant la fenêtre de contestation."
+      ],
+      "discriminator": [
+        232,
+        219,
+        223,
+        41,
+        219,
+        236,
+        220,
+        190
+      ],
+      "accounts": [
+        {
+          "name": "resolver",
+          "signer": true,
+          "relations": [
+            "market"
+          ]
+        },
+        {
+          "name": "market",
+          "writable": true
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "claim",
+      "docs": [
+        "Retire le gain d'une mise gagnante (marché final) ou son remboursement (marché annulé).",
+        "Le compte de mise est fermé et son loyer rendu au parieur."
+      ],
+      "discriminator": [
+        62,
+        198,
+        214,
+        193,
+        213,
+        159,
+        108,
+        210
+      ],
+      "accounts": [
+        {
+          "name": "bettor",
+          "writable": true,
+          "signer": true,
+          "relations": [
+            "bet"
+          ]
+        },
+        {
+          "name": "market",
+          "relations": [
+            "bet"
+          ]
+        },
+        {
+          "name": "bet",
+          "writable": true
+        },
+        {
+          "name": "bettor_token_account",
+          "writable": true
+        },
+        {
+          "name": "vault",
+          "writable": true,
+          "relations": [
+            "market"
+          ]
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "create_market",
+      "discriminator": [
+        103,
+        226,
+        97,
+        235,
+        200,
+        188,
+        251,
+        254
+      ],
+      "accounts": [
+        {
+          "name": "authority",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "market",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  114,
+                  107,
+                  101,
+                  116
+                ]
+              },
+              {
+                "kind": "arg",
+                "path": "args.market_id"
+              }
+            ]
+          }
+        },
+        {
+          "name": "mint"
+        },
+        {
+          "name": "vault",
+          "docs": [
+            "Cagnotte en USDC, détenue par le marché (PDA)."
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market"
+              }
+            ]
+          }
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "args",
+          "type": {
+            "defined": {
+              "name": "CreateMarketArgs"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "place_bet",
+      "docs": [
+        "Mise de `amount` (en unités du mint, 6 décimales pour l'USDC) sur `outcome`.",
+        "Plusieurs mises d'un même wallet sur un même résultat s'additionnent."
+      ],
+      "discriminator": [
+        222,
+        62,
+        67,
+        220,
+        63,
+        166,
+        126,
+        33
+      ],
+      "accounts": [
+        {
+          "name": "bettor",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "market",
+          "writable": true
+        },
+        {
+          "name": "bet",
+          "writable": true
+        },
+        {
+          "name": "bettor_token_account",
+          "writable": true
+        },
+        {
+          "name": "vault",
+          "writable": true,
+          "relations": [
+            "market"
+          ]
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "outcome",
+          "type": "u8"
+        },
+        {
+          "name": "amount",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "resolve",
+      "docs": [
+        "Annonce (ou corrige, pendant la fenêtre de contestation) le résultat gagnant.",
+        "Si personne n'a misé sur le gagnant, le marché est annulé et tout le monde est remboursé."
+      ],
+      "discriminator": [
+        246,
+        150,
+        236,
+        206,
+        108,
+        63,
+        58,
+        10
+      ],
+      "accounts": [
+        {
+          "name": "resolver",
+          "signer": true,
+          "relations": [
+            "market"
+          ]
+        },
+        {
+          "name": "market",
+          "writable": true
+        }
+      ],
+      "args": [
+        {
+          "name": "winner",
+          "type": "u8"
+        }
+      ]
+    },
+    {
+      "name": "withdraw_fees",
+      "docs": [
+        "L'autorité retire les frais, une fois le marché résolu et la contestation close."
+      ],
+      "discriminator": [
+        198,
+        212,
+        171,
+        109,
+        144,
+        215,
+        174,
+        89
+      ],
+      "accounts": [
+        {
+          "name": "authority",
+          "signer": true,
+          "relations": [
+            "market"
+          ]
+        },
+        {
+          "name": "market",
+          "writable": true
+        },
+        {
+          "name": "authority_token_account",
+          "writable": true
+        },
+        {
+          "name": "vault",
+          "writable": true,
+          "relations": [
+            "market"
+          ]
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        }
+      ],
+      "args": []
+    }
+  ],
+  "accounts": [
+    {
+      "name": "Bet",
+      "discriminator": [
+        147,
+        23,
+        35,
+        59,
+        15,
+        75,
+        155,
+        32
+      ]
+    },
+    {
+      "name": "Market",
+      "discriminator": [
+        219,
+        190,
+        213,
+        55,
+        0,
+        227,
+        198,
+        154
+      ]
+    }
+  ],
+  "events": [
+    {
+      "name": "BetPlaced",
+      "discriminator": [
+        88,
+        88,
+        145,
+        226,
+        126,
+        206,
+        32,
+        0
+      ]
+    },
+    {
+      "name": "Claimed",
+      "discriminator": [
+        217,
+        192,
+        123,
+        72,
+        108,
+        150,
+        248,
+        33
+      ]
+    },
+    {
+      "name": "FeesWithdrawn",
+      "discriminator": [
+        234,
+        15,
+        0,
+        119,
+        148,
+        241,
+        40,
+        21
+      ]
+    },
+    {
+      "name": "MarketCancelled",
+      "discriminator": [
+        139,
+        163,
+        33,
+        168,
+        19,
+        180,
+        81,
+        170
+      ]
+    },
+    {
+      "name": "MarketCreated",
+      "discriminator": [
+        88,
+        184,
+        130,
+        231,
+        226,
+        84,
+        6,
+        58
+      ]
+    },
+    {
+      "name": "MarketResolved",
+      "discriminator": [
+        89,
+        67,
+        230,
+        95,
+        143,
+        106,
+        199,
+        202
+      ]
+    }
+  ],
+  "errors": [
+    {
+      "code": 6000,
+      "name": "InvalidOutcomeCount",
+      "msg": "Entre 2 et 16 résultats"
+    },
+    {
+      "code": 6001,
+      "name": "FeeTooHigh",
+      "msg": "Frais supérieurs au maximum autorisé"
+    },
+    {
+      "code": 6002,
+      "name": "ClosesInPast",
+      "msg": "La fermeture des mises est déjà passée"
+    },
+    {
+      "code": 6003,
+      "name": "ClosesAfterEnd",
+      "msg": "Les mises doivent fermer avant la fin du défi"
+    },
+    {
+      "code": 6004,
+      "name": "InvalidDisputeWindow",
+      "msg": "Fenêtre de contestation invalide"
+    },
+    {
+      "code": 6005,
+      "name": "MarketNotOpen",
+      "msg": "Le marché n'est pas ouvert"
+    },
+    {
+      "code": 6006,
+      "name": "BetsClosed",
+      "msg": "Les mises sont fermées"
+    },
+    {
+      "code": 6007,
+      "name": "InvalidOutcome",
+      "msg": "Résultat inconnu"
+    },
+    {
+      "code": 6008,
+      "name": "ZeroAmount",
+      "msg": "Montant nul"
+    },
+    {
+      "code": 6009,
+      "name": "ChallengeNotOver",
+      "msg": "Le défi n'est pas terminé"
+    },
+    {
+      "code": 6010,
+      "name": "MarketFinal",
+      "msg": "Le marché est déjà définitif"
+    },
+    {
+      "code": 6011,
+      "name": "MarketCancelled",
+      "msg": "Le marché est annulé"
+    },
+    {
+      "code": 6012,
+      "name": "MarketNotResolved",
+      "msg": "Le marché n'est pas résolu"
+    },
+    {
+      "code": 6013,
+      "name": "MarketNotFinal",
+      "msg": "Le marché n'est pas encore définitif"
+    },
+    {
+      "code": 6014,
+      "name": "DisputeWindowOpen",
+      "msg": "Fenêtre de contestation en cours"
+    },
+    {
+      "code": 6015,
+      "name": "LosingBet",
+      "msg": "Mise perdante"
+    },
+    {
+      "code": 6016,
+      "name": "NothingToWithdraw",
+      "msg": "Rien à retirer"
+    },
+    {
+      "code": 6017,
+      "name": "Unauthorized",
+      "msg": "Non autorisé"
+    },
+    {
+      "code": 6018,
+      "name": "Overflow",
+      "msg": "Dépassement arithmétique"
+    }
+  ],
+  "types": [
+    {
+      "name": "Bet",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "market",
+            "type": "pubkey"
+          },
+          {
+            "name": "bettor",
+            "type": "pubkey"
+          },
+          {
+            "name": "outcome",
+            "type": "u8"
+          },
+          {
+            "name": "amount",
+            "docs": [
+              "Montant brut débité."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "stake",
+            "docs": [
+              "Mise nette, entrée dans la cagnotte."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "BetPlaced",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "market",
+            "type": "pubkey"
+          },
+          {
+            "name": "bettor",
+            "type": "pubkey"
+          },
+          {
+            "name": "outcome",
+            "type": "u8"
+          },
+          {
+            "name": "amount",
+            "type": "u64"
+          },
+          {
+            "name": "fee",
+            "type": "u64"
+          },
+          {
+            "name": "stake",
+            "type": "u64"
+          },
+          {
+            "name": "outcome_pool",
+            "type": "u64"
+          },
+          {
+            "name": "total_pool",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "CancelReason",
+      "type": {
+        "kind": "enum",
+        "variants": [
+          {
+            "name": "ByResolver"
+          },
+          {
+            "name": "NoWinningBets"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Claimed",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "market",
+            "type": "pubkey"
+          },
+          {
+            "name": "bettor",
+            "type": "pubkey"
+          },
+          {
+            "name": "outcome",
+            "type": "u8"
+          },
+          {
+            "name": "stake",
+            "type": "u64"
+          },
+          {
+            "name": "payout",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "CreateMarketArgs",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "market_id",
+            "docs": [
+              "Identifiant du défi (le `challenge_no` côté site), unique par programme."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "n_outcomes",
+            "type": "u8"
+          },
+          {
+            "name": "fee_bps",
+            "docs": [
+              "Frais en points de base : 200 = 2 %."
+            ],
+            "type": "u16"
+          },
+          {
+            "name": "closes_at",
+            "docs": [
+              "Fermeture des mises (timestamp Unix)."
+            ],
+            "type": "i64"
+          },
+          {
+            "name": "ends_at",
+            "docs": [
+              "Fin du défi : la résolution est possible à partir de là."
+            ],
+            "type": "i64"
+          },
+          {
+            "name": "dispute_seconds",
+            "docs": [
+              "Fenêtre de contestation après la résolution (24 h = 86 400)."
+            ],
+            "type": "i64"
+          },
+          {
+            "name": "resolver",
+            "docs": [
+              "Clé autorisée à résoudre ou annuler (multisig)."
+            ],
+            "type": "pubkey"
+          }
+        ]
+      }
+    },
+    {
+      "name": "FeesWithdrawn",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "market",
+            "type": "pubkey"
+          },
+          {
+            "name": "amount",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Market",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "market_id",
+            "type": "u64"
+          },
+          {
+            "name": "authority",
+            "type": "pubkey"
+          },
+          {
+            "name": "resolver",
+            "type": "pubkey"
+          },
+          {
+            "name": "mint",
+            "type": "pubkey"
+          },
+          {
+            "name": "vault",
+            "type": "pubkey"
+          },
+          {
+            "name": "n_outcomes",
+            "type": "u8"
+          },
+          {
+            "name": "fee_bps",
+            "type": "u16"
+          },
+          {
+            "name": "closes_at",
+            "type": "i64"
+          },
+          {
+            "name": "ends_at",
+            "type": "i64"
+          },
+          {
+            "name": "dispute_seconds",
+            "type": "i64"
+          },
+          {
+            "name": "status",
+            "type": {
+              "defined": {
+                "name": "MarketStatus"
+              }
+            }
+          },
+          {
+            "name": "winner",
+            "docs": [
+              "Index du gagnant, `u8::MAX` tant qu'il n'y en a pas."
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "resolved_at",
+            "type": "i64"
+          },
+          {
+            "name": "pools",
+            "docs": [
+              "Cagnotte par résultat (mises nettes de frais)."
+            ],
+            "type": {
+              "array": [
+                "u64",
+                16
+              ]
+            }
+          },
+          {
+            "name": "total_pool",
+            "docs": [
+              "Σ pools."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "total_volume",
+            "docs": [
+              "Σ montants bruts misés."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "fees_accrued",
+            "docs": [
+              "Frais encaissés, encore dans le vault."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "MarketCancelled",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "market",
+            "type": "pubkey"
+          },
+          {
+            "name": "reason",
+            "type": {
+              "defined": {
+                "name": "CancelReason"
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "MarketCreated",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "market",
+            "type": "pubkey"
+          },
+          {
+            "name": "market_id",
+            "type": "u64"
+          },
+          {
+            "name": "n_outcomes",
+            "type": "u8"
+          },
+          {
+            "name": "closes_at",
+            "type": "i64"
+          },
+          {
+            "name": "ends_at",
+            "type": "i64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "MarketResolved",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "market",
+            "type": "pubkey"
+          },
+          {
+            "name": "winner",
+            "type": "u8"
+          },
+          {
+            "name": "resolved_at",
+            "type": "i64"
+          },
+          {
+            "name": "final_at",
+            "type": "i64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "MarketStatus",
+      "type": {
+        "kind": "enum",
+        "variants": [
+          {
+            "name": "Open"
+          },
+          {
+            "name": "Resolved"
+          },
+          {
+            "name": "Cancelled"
+          }
+        ]
+      }
+    }
+  ]
+}

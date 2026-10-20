@@ -1,9 +1,12 @@
 import { KOLS, type Kol } from "./kols";
+import type { OnchainMarket } from "@/lib/solana/program";
 
 export type Period = "7D" | "30D";
 
 export type Outcome = {
   kol: Kol;
+  /** Index du résultat dans le programme on-chain (stable, fixé à la création du marché). */
+  index: number;
   /** Cagnotte placée sur ce KOL, en USD (mises nettes de frais). */
   pool: number;
   /** Variation de la part de cagnotte sur 24h, en points */
@@ -30,6 +33,8 @@ export type Market = {
   featured?: boolean;
   /** Chrono figé (CHRONO=NO) : durée affichée en ms, sans défilement */
   chronoFrozenMs?: number;
+  /** État du marché on-chain quand le défi existe dans le programme (`market_id` = `challenge`). */
+  chain?: OnchainMarket;
 };
 
 /**
@@ -42,7 +47,7 @@ function poolsFromPnl(period: Period, total: number): Outcome[] {
   const weights = KOLS.map((k) => Math.pow(Math.max(k[key], 1000), 1.35));
   const sum = weights.reduce((a, b) => a + b, 0);
   const changes = [2.4, -0.8, 1.1, -1.6, 0.6, -0.9, -0.8];
-  return KOLS.map((kol, i) => ({ kol, pool: Math.round((total * weights[i]) / sum), change24h: changes[i] }))
+  return KOLS.map((kol, i) => ({ kol, index: i, pool: Math.round((total * weights[i]) / sum), change24h: changes[i] }))
     .sort((a, b) => b.pool - a.pool);
 }
 

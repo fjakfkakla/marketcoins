@@ -1,12 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { AlertTriangle, ArrowDownToLine, ArrowUpFromLine, Check, Mail, X } from "lucide-react";
+import { AlertTriangle, ExternalLink, X } from "lucide-react";
 import { useWallet } from "@/lib/wallet";
-import { usd } from "@/lib/format";
+import { CLUSTER, explorerUrl } from "@/lib/solana/config";
 import { CopyButton } from "./CopyButton";
-
-const DEPOSIT_ADDRESS = "MCdep1ZxQp9vR4tLd8sH3rWcA1eB6yU5oP0jK2nM9xVq";
 
 function Shell({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
   useEffect(() => {
@@ -33,46 +31,63 @@ function Shell({ title, onClose, children }: { title: string; onClose: () => voi
   );
 }
 
-const PROVIDERS = [
-  { id: "Phantom", color: "#ab9ff2", letter: "P" },
-  { id: "Solflare", color: "#fc7227", letter: "S" },
-  { id: "Backpack", color: "#e33e3f", letter: "B" },
+const INSTALL = [
+  { name: "Phantom", href: "https://phantom.com/download" },
+  { name: "Solflare", href: "https://solflare.com/download" },
+  { name: "Backpack", href: "https://backpack.app/download" },
 ];
 
 function ConnectModal() {
   const w = useWallet();
   const [accepted, setAccepted] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const installed = w.wallets.filter((x) => x.installed);
+
+  const connect = async (name: string) => {
+    setErr(null);
+    try {
+      await w.connect(name);
+    } catch (e) {
+      setErr((e as Error).message || "Connexion refusée.");
+    }
+  };
+
   return (
     <Shell title="Se connecter" onClose={() => w.openModal(null)}>
       <p className="mb-4 text-sm text-muted">
         Connecte ton wallet Solana. Marketcoins ne détient jamais tes clés privées : tu signes chaque
         transaction toi-même.
       </p>
-      <div className="space-y-2">
-        {PROVIDERS.map((p) => (
-          <button
-            key={p.id}
-            disabled={!accepted}
-            onClick={() => w.connect(p.id)}
-            className="flex w-full items-center gap-3 rounded-xl border border-line p-3 text-left transition hover:border-gold hover:bg-gold-soft/40 disabled:opacity-40"
-          >
-            <span className="grid h-9 w-9 place-items-center rounded-lg font-bold text-white" style={{ background: p.color }}>
-              {p.letter}
-            </span>
-            <span className="flex-1 font-semibold">{p.id}</span>
-            <span className="text-xs text-muted">Solana</span>
-          </button>
-        ))}
-        <button
-          disabled={!accepted}
-          onClick={() => w.connect("Email")}
-          className="flex w-full items-center gap-3 rounded-xl border border-line p-3 text-left transition hover:border-gold hover:bg-gold-soft/40 disabled:opacity-40"
-        >
-          <span className="grid h-9 w-9 place-items-center rounded-lg bg-ink text-white"><Mail size={16} /></span>
-          <span className="flex-1 font-semibold">Continuer avec un email</span>
-          <span className="text-xs text-muted">wallet intégré</span>
-        </button>
-      </div>
+      {installed.length > 0 ? (
+        <div className="space-y-2">
+          {installed.map((p) => (
+            <button
+              key={p.name}
+              disabled={!accepted || w.connecting}
+              onClick={() => connect(p.name)}
+              className="flex w-full items-center gap-3 rounded-xl border border-line p-3 text-left transition hover:border-gold hover:bg-gold-soft/40 disabled:opacity-40"
+            >
+              {/* eslint-disable-next-line @next/next/no-img-element -- icône fournie par le wallet (data URI) */}
+              <img src={p.icon} alt="" className="h-9 w-9 rounded-lg" />
+              <span className="flex-1 font-semibold">{p.name}</span>
+              <span className="text-xs text-muted">{w.connecting ? "connexion…" : "Solana"}</span>
+            </button>
+          ))}
+        </div>
+      ) : (
+        <div className="rounded-xl bg-cream-2 p-4 text-sm">
+          <div className="font-semibold">Aucun wallet détecté</div>
+          <p className="mt-1 text-muted">Installe une extension, puis recharge la page.</p>
+          <div className="mt-3 flex flex-wrap gap-2">
+            {INSTALL.map((i) => (
+              <a key={i.name} href={i.href} target="_blank" rel="noreferrer" className="btn-ghost py-1.5 text-xs">
+                {i.name} <ExternalLink size={12} />
+              </a>
+            ))}
+          </div>
+        </div>
+      )}
+      {err && <p className="mt-3 text-sm text-down">{err}</p>}
       <label className="mt-4 flex cursor-pointer items-start gap-2 text-xs text-muted">
         <input type="checkbox" checked={accepted} onChange={(e) => setAccepted(e.target.checked)} className="mt-0.5 accent-gold" />
         <span>
@@ -85,105 +100,40 @@ function ConnectModal() {
   );
 }
 
-function DepositModal() {
+function ReceiveModal() {
   const w = useWallet();
-  const [amount, setAmount] = useState(100);
-  const [step, setStep] = useState<"form" | "pending" | "done">("form");
-  const confirm = () => {
-    setStep("pending");
-    setTimeout(() => {
-      w.deposit(amount);
-      setStep("done");
-    }, 1400);
-  };
+  const address = w.address ?? "";
   return (
-    <Shell title="Déposer des USDC" onClose={() => w.openModal(null)}>
-      {step === "done" ? (
-        <div className="py-6 text-center pop">
-          <div className="mx-auto mb-3 grid h-14 w-14 place-items-center rounded-full bg-up-soft text-up"><Check size={28} /></div>
-          <div className="text-lg font-bold">Dépôt reçu</div>
-          <div className="mono mt-1 text-muted">+{usd(amount)} crédités</div>
-        </div>
-      ) : (
-        <div className="space-y-4">
-          <div className="flex items-center gap-3 rounded-xl bg-cream-2 p-3">
-            <span className="grid h-10 w-10 place-items-center rounded-full bg-[#2775ca] font-bold text-white">$</span>
-            <div className="flex-1">
-              <div className="font-semibold">USDC · réseau Solana</div>
-              <div className="text-xs text-muted">Arrivée en ~2 secondes, frais ≈ 0,001 SOL</div>
-            </div>
-          </div>
-          <div>
-            <div className="mb-1 text-xs font-semibold uppercase tracking-wider text-muted">Adresse de dépôt</div>
-            <div className="flex items-center gap-2 rounded-xl border border-line bg-white p-2">
-              <div className="grid h-16 w-16 shrink-0 place-items-center rounded-lg bg-ink">
-                <svg viewBox="0 0 21 21" className="h-14 w-14" fill="#fff">
-                  {Array.from({ length: 441 }, (_, i) => {
-                    const x = i % 21, y = Math.floor(i / 21);
-                    const finder = (x < 7 && y < 7) || (x > 13 && y < 7) || (x < 7 && y > 13);
-                    const h = ((x * 73856093) ^ (y * 19349663) ^ 0x9e3779b9) >>> 0;
-                    const on = finder ? ((x % 7 === 0 || x % 7 === 6 || y % 7 === 0 || y % 7 === 6 || (x % 7 > 1 && x % 7 < 5 && y % 7 > 1 && y % 7 < 5)) && x % 7 !== 7) : h % 5 < 2;
-                    return on ? <rect key={i} x={x} y={y} width="1" height="1" /> : null;
-                  })}
-                </svg>
-              </div>
-              <code className="mono flex-1 break-all text-xs">{DEPOSIT_ADDRESS}</code>
-              <CopyButton value={DEPOSIT_ADDRESS} />
-            </div>
-          </div>
-          <div>
-            <div className="mb-1 text-xs font-semibold uppercase tracking-wider text-muted">Montant (démo)</div>
-            <div className="flex gap-2">
-              <input type="number" min={1} value={amount} onChange={(e) => setAmount(Math.max(1, Number(e.target.value) || 0))} className="input mono" />
-              {[50, 100, 500].map((v) => (
-                <button key={v} onClick={() => setAmount(v)} className="btn-ghost px-3">{v}</button>
-              ))}
-            </div>
-          </div>
-          <div className="flex items-start gap-2 rounded-xl bg-down-soft p-3 text-xs text-down">
-            <AlertTriangle size={16} className="mt-0.5 shrink-0" />
-            N&apos;envoie que des USDC sur Solana. Tout autre token ou réseau sera perdu.
-          </div>
-          <button onClick={confirm} disabled={step === "pending"} className="btn-gold w-full py-3">
-            <ArrowDownToLine size={16} /> {step === "pending" ? "Confirmation on-chain…" : `Simuler le dépôt de ${usd(amount)}`}
-          </button>
-        </div>
-      )}
-    </Shell>
-  );
-}
-
-function WithdrawModal() {
-  const w = useWallet();
-  const [amount, setAmount] = useState(Math.min(50, Math.floor(w.balance)));
-  const [err, setErr] = useState<string | null>(null);
-  return (
-    <Shell title="Retirer des USDC" onClose={() => w.openModal(null)}>
+    <Shell title="Recevoir des USDC" onClose={() => w.openModal(null)}>
       <div className="space-y-4">
-        <div className="rounded-xl bg-cream-2 p-3 text-sm">
-          Disponible : <span className="mono font-bold">{usd(w.balance)}</span>
-        </div>
-        <div>
-          <div className="mb-1 text-xs font-semibold uppercase tracking-wider text-muted">Montant</div>
-          <div className="flex gap-2">
-            <input type="number" min={1} max={w.balance} value={amount} onChange={(e) => setAmount(Number(e.target.value) || 0)} className="input mono" />
-            <button onClick={() => setAmount(w.balance)} className="btn-ghost px-3">Max</button>
+        <div className="flex items-center gap-3 rounded-xl bg-cream-2 p-3">
+          <span className="grid h-10 w-10 place-items-center rounded-full bg-[#2775ca] font-bold text-white">$</span>
+          <div className="flex-1">
+            <div className="font-semibold">USDC · réseau Solana</div>
+            <div className="text-xs text-muted">Les mises partent directement de ton wallet. Pas de dépôt chez nous.</div>
           </div>
         </div>
         <div>
-          <div className="mb-1 text-xs font-semibold uppercase tracking-wider text-muted">Vers</div>
-          <div className="input mono text-muted">{w.address}</div>
+          <div className="mb-1 text-xs font-semibold uppercase tracking-wider text-muted">Ton adresse</div>
+          <div className="flex items-center gap-2 rounded-xl border border-line bg-white p-3">
+            <code className="mono flex-1 break-all text-xs">{address}</code>
+            <CopyButton value={address} />
+          </div>
+          <a href={explorerUrl("address", address)} target="_blank" rel="noreferrer" className="mt-1 inline-flex items-center gap-1 text-xs text-muted hover:text-ink">
+            Voir sur l&apos;explorateur <ExternalLink size={11} />
+          </a>
         </div>
-        {err && <p className="text-sm text-down">{err}</p>}
-        <button
-          onClick={() => {
-            if (amount <= 0) return setErr("Montant invalide.");
-            if (!w.withdraw(amount)) setErr("Solde insuffisant.");
-          }}
-          className="btn-dark w-full py-3"
-        >
-          <ArrowUpFromLine size={16} /> Retirer {usd(amount)}
-        </button>
+        {CLUSTER === "devnet" && (
+          <div className="rounded-xl bg-gold-soft p-3 text-xs">
+            <b>Réseau de test (devnet).</b> Récupère des USDC de test sur{" "}
+            <a href="https://faucet.circle.com" target="_blank" rel="noreferrer" className="underline">faucet.circle.com</a> et des SOL sur{" "}
+            <a href="https://faucet.solana.com" target="_blank" rel="noreferrer" className="underline">faucet.solana.com</a>.
+          </div>
+        )}
+        <div className="flex items-start gap-2 rounded-xl bg-down-soft p-3 text-xs text-down">
+          <AlertTriangle size={16} className="mt-0.5 shrink-0" />
+          N&apos;envoie que des USDC sur Solana. Garde aussi un peu de SOL pour les frais de réseau.
+        </div>
       </div>
     </Shell>
   );
@@ -192,7 +142,6 @@ function WithdrawModal() {
 export function Modals() {
   const w = useWallet();
   if (w.modal === "connect") return <ConnectModal />;
-  if (w.modal === "deposit") return <DepositModal />;
-  if (w.modal === "withdraw") return <WithdrawModal />;
+  if (w.modal === "receive") return <ReceiveModal />;
   return null;
 }

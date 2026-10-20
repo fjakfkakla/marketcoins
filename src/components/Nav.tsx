@@ -41,8 +41,8 @@ export function Nav() {
 
           {w.ready && w.connected ? (
             <>
-              <button onClick={() => w.openModal("deposit")} className="btn-gold hidden sm:inline-flex">
-                Déposer
+              <button onClick={() => w.openModal("receive")} className="btn-gold hidden sm:inline-flex">
+                Recevoir
               </button>
               <Link
                 href="/compte"

@@ -11,6 +11,8 @@
     "test:program": "anchor test --validator legacy"
   },
   "dependencies": {
+    "@solana/wallet-adapter-base": "^0.9.28",
+    "@solana/wallet-adapter-react": "^0.15.40",
     "@supabase/supabase-js": "^2.117.3",
     "lucide-react": "^1.54.0",
     "next": "16.4.0",

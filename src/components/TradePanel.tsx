@@ -1,45 +1,52 @@
 "use client";
 
-import { useState } from "react";
-import { Info, Wallet } from "lucide-react";
+import { useState, useSyncExternalStore } from "react";
+import { useRouter } from "next/navigation";
+import { ExternalLink, Info, Loader2, Wallet } from "lucide-react";
 import type { Market, Outcome } from "@/data/markets";
 import { useWallet } from "@/lib/wallet";
 import { mult, pct, usd } from "@/lib/format";
 import { multiplier, quote, share, totalPool } from "@/lib/parimutuel";
+import { explorerUrl } from "@/lib/solana/config";
 import { Avatar } from "./Avatar";
 
 /**
- * Panneau de mise parimutuel : on choisit un KOL et un montant, la mise rejoint
- * la cagnotte. Le gain affiché est une estimation sur la cagnotte actuelle.
+ * Panneau de mise parimutuel : on choisit un KOL et un montant, la mise part du
+ * wallet vers la cagnotte on-chain. Le gain affiché est une estimation sur la
+ * cagnotte actuelle.
  */
 export function TradePanel({ market, outcome }: { market: Market; outcome: Outcome }) {
   const w = useWallet();
+  const router = useRouter();
   const [amount, setAmount] = useState(10);
-  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<{ ok: boolean; text: string; sig?: string } | null>(null);
 
   const q = quote(market, outcome, amount);
   const before = multiplier(market, outcome);
   const total = totalPool(market);
 
-  const submit = () => {
+  const chain = market.chain;
+  const now = useSyncExternalStore(everySecond, () => Math.floor(Date.now() / 1000), () => 0);
+  const closed = chain ? chain.status !== "open" || (now > 0 && now >= chain.closesAt) : false;
+  const blocked = !w.enabled ? "Programme non configuré sur ce déploiement." : !chain ? "Ce défi n'est pas encore ouvert on-chain." : closed ? "Les mises sont fermées." : null;
+
+  const submit = async () => {
     setMsg(null);
     if (!w.connected) return w.openModal("connect");
+    if (blocked) return setMsg({ ok: false, text: blocked });
     if (amount <= 0) return setMsg({ ok: false, text: "Montant invalide." });
-    const ok = w.bet({
-      marketSlug: market.slug,
-      marketTitle: market.title,
-      kolId: outcome.kol.id,
-      kolName: outcome.kol.name,
-      amount: q.amount,
-      fee: q.fee,
-      stake: q.stake,
-      payoutAtBet: q.payout,
-    });
-    setMsg(
-      ok
-        ? { ok: true, text: `Mise placée : ${usd(q.amount)} sur ${outcome.kol.name}. Gain estimé ${usd(q.payout)} s'il gagne.` }
-        : { ok: false, text: "Solde insuffisant. Dépose des USDC." },
-    );
+    if (amount > w.balance) return setMsg({ ok: false, text: "Solde USDC insuffisant." });
+    setBusy(true);
+    try {
+      const sig = await w.placeBet(chain!.marketId, outcome.index, amount);
+      setMsg({ ok: true, text: `Mise placée : ${usd(q.amount)} sur ${outcome.kol.name}. Gain estimé ${usd(q.payout)} s'il gagne.`, sig });
+      router.refresh(); // recharge les cagnottes on-chain
+    } catch (e) {
+      setMsg({ ok: false, text: humanError(e) });
+    } finally {
+      setBusy(false);
+    }
   };
 
   return (
@@ -107,11 +114,30 @@ export function TradePanel({ market, outcome }: { market: Market; outcome: Outco
         </div>
       </div>
 
-      {msg && <p className={`mb-3 text-sm ${msg.ok ? "text-up" : "text-down"}`}>{msg.text}</p>}
+      {msg && (
+        <p className={`mb-3 text-sm ${msg.ok ? "text-up" : "text-down"}`}>
+          {msg.text}
+          {msg.sig && (
+            <a href={explorerUrl("tx", msg.sig)} target="_blank" rel="noreferrer" className="ml-1 inline-flex items-center gap-0.5 underline">
+              transaction <ExternalLink size={11} />
+            </a>
+          )}
+        </p>
+      )}
 
-      <button onClick={submit} className="btn-gold w-full py-3 text-base">
-        {w.connected ? `Miser ${usd(q.amount)} sur ${outcome.kol.name}` : <><Wallet size={16} /> Connecter le wallet</>}
-      </button>
+      {w.connected && blocked ? (
+        <button disabled className="btn-ghost w-full py-3 text-base">{blocked}</button>
+      ) : (
+        <button onClick={submit} disabled={busy} className="btn-gold w-full py-3 text-base">
+          {busy ? (
+            <><Loader2 size={16} className="animate-spin" /> Signature dans le wallet…</>
+          ) : w.connected ? (
+            `Miser ${usd(q.amount)} sur ${outcome.kol.name}`
+          ) : (
+            <><Wallet size={16} /> Connecter le wallet</>
+          )}
+        </button>
+      )}
 
       <p className="mt-3 flex items-start gap-1.5 text-[11px] text-muted">
         <Info size={12} className="mt-0.5 shrink-0" />
@@ -121,4 +147,24 @@ export function TradePanel({ market, outcome }: { market: Market; outcome: Outco
       </p>
     </div>
   );
+}
+
+function everySecond(cb: () => void) {
+  const id = setInterval(cb, 1000);
+  return () => clearInterval(id);
+}
+
+/** Message lisible pour les erreurs les plus courantes du wallet et du programme. */
+export function humanError(e: unknown): string {
+  const err = e as { message?: string; error?: { errorCode?: { code?: string }; errorMessage?: string } };
+  const code = err.error?.errorCode?.code;
+  if (code === "BetsClosed") return "Les mises sont fermées.";
+  if (code === "MarketNotOpen") return "Ce défi n'accepte plus de mises.";
+  if (code === "DisputeWindowOpen") return "Fenêtre de contestation en cours, retrait possible après.";
+  if (code === "LosingBet") return "Cette mise n'a pas gagné.";
+  if (err.error?.errorMessage) return err.error.errorMessage;
+  const m = err.message ?? "";
+  if (/rejected|cancel|denied/i.test(m)) return "Transaction refusée dans le wallet.";
+  if (/insufficient|0x1\b/i.test(m)) return "Solde insuffisant (USDC ou SOL pour les frais de réseau).";
+  return m || "Transaction échouée.";
 }

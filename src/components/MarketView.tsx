@@ -1,8 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { Bookmark, ChevronDown, Code2, ExternalLink, Link2, Send, TrendingDown, TrendingUp } from "lucide-react";
+import { explorerUrl } from "@/lib/solana/config";
 import type { Market, Period } from "@/data/markets";
 import type { Kol } from "@/data/kols";
 import { Avatar } from "./Avatar";
@@ -12,8 +13,7 @@ import { PnlChart } from "./PnlChart";
 import { Podium } from "./Podium";
 import { TradePanel } from "./TradePanel";
 import { dateFr, mult, pct, shortWallet, usd } from "@/lib/format";
-import { multiplier, share, totalPool, withStakes } from "@/lib/parimutuel";
-import { useWallet } from "@/lib/wallet";
+import { multiplier, share, totalPool } from "@/lib/parimutuel";
 
 const ACTIVITY = [
   { who: "7Gx2…xVq", kol: "Cooker", amt: 250, ago: "il y a 12 s" },
@@ -23,10 +23,7 @@ const ACTIVITY = [
   { who: "Hh3s…k2R", kol: "Cooker", amt: 500, ago: "il y a 5 min" },
 ];
 
-export function MarketView({ market: base, kols: KOLS, sibling }: { market: Market; kols: Kol[]; sibling?: Market }) {
-  const w = useWallet();
-  // Les mises de l'utilisateur (mock local) s'ajoutent à la cagnotte pour faire bouger les cotes.
-  const market = useMemo(() => withStakes(base, w.positions), [base, w.positions]);
+export function MarketView({ market, kols: KOLS, sibling }: { market: Market; kols: Kol[]; sibling?: Market }) {
   const [selectedId, setSelectedId] = useState(market.outcomes[0].kol.id);
   const selected = market.outcomes.find((o) => o.kol.id === selectedId) ?? market.outcomes[0];
   const [period, setPeriod] = useState<Period>(market.period);
@@ -43,6 +40,13 @@ export function MarketView({ market: base, kols: KOLS, sibling }: { market: Mark
             <span className="pill-gold">Défi #{market.challenge}</span>
             <span className="pill-muted">KOL · {market.period}</span>
             <span className="pill-muted">{dateFr(market.startsAt)} → {dateFr(market.endsAt)}</span>
+            {market.chain ? (
+              <a href={explorerUrl("address", market.chain.address)} target="_blank" rel="noreferrer" className="pill-up" title="Cagnotte dans le programme Solana">
+                <span className="h-1.5 w-1.5 rounded-full bg-up live-dot" /> on-chain · {market.chain.status === "open" ? "ouvert" : market.chain.status === "resolved" ? "résolu" : "annulé"}
+              </a>
+            ) : (
+              <span className="pill-muted" title="Ce défi n'existe pas encore dans le programme Solana">démo</span>
+            )}
             <span className="ml-auto flex items-center gap-1 text-muted">
               <Code2 size={16} className="cursor-pointer hover:text-ink" />
               <Link2 size={16} className="cursor-pointer hover:text-ink" />
