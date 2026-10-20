@@ -131,10 +131,42 @@ Les pots se remplissent avec les vraies mises : le seed n'en crée plus.
 5. ~~Résultats, paiement des pots, remboursements~~ (fait).
 6. **Avant le vrai argent** : avis d'avocat, coffre multisig (Squads), 2 à 3 semaines de défis sur devnet sans erreur.
 
-## Variables d'environnement
+## Hébergement : Railway, et rien d'autre
 
-À définir dans Railway (service → Variables). Voir `.env.example`.
-Le site est déployé par Railway à partir de la branche `main`.
+Le site est déployé par Railway à partir de la branche `main`. **Toutes** les variables se mettent dans
+Railway → ton service → Variables (voir `.env.example`). Dès qu'une variable change, Railway redéploie le site
+tout seul : rien d'autre à faire, nulle part ailleurs. Pas de Vercel.
+
+Pour vérifier que tout est branché : ouvrir `https://<ton-site>/api/health` (ne montre aucun secret).
+
+### Mise en route pas à pas (devnet)
+
+Les 13 variables, dans l'ordre. Une seule fois ; ensuite on ne touche plus à rien.
+
+**A. Supabase** (base de données, obligatoire)
+1. supabase.com → ton projet → Project Settings → API.
+2. `NEXT_PUBLIC_SUPABASE_URL` = Project URL · `NEXT_PUBLIC_SUPABASE_ANON_KEY` = anon public · `SUPABASE_SERVICE_ROLE_KEY` = service_role.
+3. SQL Editor : lancer les scripts de la section « Base de données » ci-dessous, dans l'ordre.
+
+**B. Connexion** (obligatoire)
+4. `SESSION_SECRET` : 64 caractères au hasard. Sur ton Mac : `openssl rand -hex 32`.
+5. `APP_URL` : l'adresse du site telle que les joueurs la tapent, ex. `https://marketcoins.app`. Plusieurs ? Sépare par des virgules. L'adresse `*.up.railway.app` est acceptée d'office.
+6. `NEXT_PUBLIC_SOLANA_CLUSTER` = `devnet` (on passera à `mainnet` plus tard).
+7. `ADMIN_WALLETS` : l'adresse publique de ton wallet Phantom (celui qui ouvrira `/admin`).
+
+**C. Alchemy** (accès à Solana pour les dépôts et les retraits, gratuit)
+8. alchemy.com → Sign up → Apps → Create new app : nom « marketcoins », chaîne **Solana**, réseau **Devnet** (coche aussi Mainnet pour plus tard). Dans l'app → API key → copier dans `ALCHEMY_API`. C'est tout ce qu'il faut pour que les dépôts et les retraits marchent.
+9. Dans Phantom, deux comptes neufs : « Coffre » et « Frais ». `VAULT_ADDRESS` = adresse publique du Coffre. `FEE_PAYER_SECRET_KEY` = clé privée du compte Frais (Phantom → compte → Exporter la clé privée). **La clé du Coffre ne va nulle part** : elle reste dans Phantom, elle servira à recharger la réserve des retraits.
+10. Des SOL de test sur le compte Frais : https://faucet.solana.com (réseau devnet, 1 SOL suffit pour des milliers de transactions).
+11. Facultatif au début, utile en prod : le webhook Alchemy, pour créditer un dépôt envoyé au coffre sans passer par le bouton. Ouvre `/api/health` et copie `compte_usdc_du_coffre`. Alchemy → Webhooks → Create webhook → **Address Activity**, chaîne Solana, réseau Devnet, adresse = ce compte, URL = `https://<ton-site>/api/webhooks/alchemy`. Copie la « Signing key » dans `ALCHEMY_WEBHOOK_SIGNING_KEY`. Sans webhook, les dépôts faits avec le bouton sont quand même crédités.
+
+**D. Solana Tracker** (PnL des KOLs et résultats des défis, gratuit)
+12. solanatracker.io → Data API → Get started (plan Free) → crée un compte → Dashboard → API key. Copie dans `SOLANATRACKER_API_KEY`. Le plan gratuit donne 2 500 requêtes par mois ; le site en consomme environ 1 700 pour 7 KOLs (une synchro toutes les 3 h). Sans cette clé, les défis existent mais les résultats restent en pause.
+13. Rien à mettre pour `SCHEDULER` : sur Railway les tâches tournent toutes les 10 minutes toutes seules. `CRON_SECRET` est facultatif (pour lancer les tâches à la main).
+
+**Passage en mainnet, le jour venu** : `NEXT_PUBLIC_SOLANA_CLUSTER` = `mainnet`, un Coffre et un compte Frais mainnet (vrais SOL), l'app Alchemy en Mainnet et le webhook refait sur le vrai compte USDC du coffre. Avant : avis d'avocat et coffre multisig (voir « Prochaines étapes »).
+
+## Variables d'environnement
 
 | Variable | Où la trouver | Exposée au navigateur ? |
 |---|---|---|
@@ -146,7 +178,7 @@ Le site est déployé par Railway à partir de la branche `main`.
 | `NEXT_PUBLIC_SOLANA_CLUSTER` | `devnet` (défaut) ou `mainnet` | oui |
 
 - `SESSION_SECRET` est **obligatoire en production** : sans lui, la connexion est refusée.
-- `APP_URL` : les adresses que les joueurs utilisent. L'adresse est écrite dans le message signé, et les requêtes venues d'une autre adresse sont refusées. Les domaines fournis automatiquement par Vercel (`VERCEL_PROJECT_PRODUCTION_URL`, `VERCEL_URL`, `VERCEL_BRANCH_URL`) et Railway (`RAILWAY_PUBLIC_DOMAIN`) sont acceptés d'office. Si ton domaine perso a plusieurs variantes (avec et sans `www`), mets-les toutes dans `APP_URL`.
+- `APP_URL` : les adresses que les joueurs utilisent. L'adresse est écrite dans le message signé, et les requêtes venues d'une autre adresse sont refusées. Le domaine fourni par Railway (`RAILWAY_PUBLIC_DOMAIN`) est accepté d'office. Si ton domaine perso a plusieurs variantes (avec et sans `www`), mets-les toutes dans `APP_URL`.
 - Sans les variables Supabase, le site fonctionne avec les données mock et la session tient seulement dans le cookie signé.
 
 ### Dépôts USDC
@@ -161,13 +193,8 @@ Le site est déployé par Railway à partir de la branche `main`.
 
 Sans `ALCHEMY_API`, `VAULT_ADDRESS` et `FEE_PAYER_SECRET_KEY`, le bouton Déposer affiche « pas encore ouverts ».
 
-**Mise en route sur devnet**
-1. Dans Phantom, crée deux comptes : « Coffre devnet » et « Frais devnet ». Copie l'adresse du coffre dans `VAULT_ADDRESS`, exporte la clé privée du compte frais dans `FEE_PAYER_SECRET_KEY`. Garde la clé du coffre à part : elle servira aux retraits.
-2. Envoie quelques SOL de test au compte frais : https://faucet.solana.com (réseau devnet).
-3. Prends des USDC de test pour ton wallet joueur : https://faucet.circle.com (Solana Devnet).
-4. Ouvre `https://<ton-site>/api/deposit/info` et copie `vaultUsdcAccount` (le compte USDC du coffre, c'est lui qui reçoit les dépôts). Puis Alchemy → Webhooks → Address Activity, réseau Solana Devnet, adresse = `vaultUsdcAccount`, URL = `https://<ton-site>/api/webhooks/alchemy`. Copie la « Signing key » dans `ALCHEMY_WEBHOOK_SIGNING_KEY`.
-   Sans webhook, les dépôts faits avec le bouton sont quand même crédités (le navigateur suit la transaction) ; le webhook sert pour les envois directs au coffre.
-5. Pour voir tes USDC de test dans Phantom : Paramètres → Paramètres développeur → Mode testnet → Solana Devnet.
+**Pour tester un dépôt sur devnet** : des USDC de test pour ton wallet joueur sur https://faucet.circle.com (Solana Devnet).
+Pour les voir dans Phantom : Paramètres → Paramètres développeur → Mode testnet → Solana Devnet. La mise en route complète est plus haut (« Mise en route pas à pas »).
 
 Le wallet chaud (payeur des frais + réserve des retraits) ne détient que quelques SOL et une petite réserve d'USDC : s'il est compromis, la perte est limitée à ça. Les USDC des joueurs sont sur le coffre, dont la clé n'est jamais sur le serveur.
 

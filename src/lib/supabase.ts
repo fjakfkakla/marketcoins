@@ -1,7 +1,7 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 
 /**
- * Clients Supabase. Les variables viennent de l'environnement (Railway / Vercel),
+ * Clients Supabase. Les variables viennent de l'environnement (Railway),
  * jamais du code. Si elles sont absentes, le site tourne sur les données mock.
  */
 

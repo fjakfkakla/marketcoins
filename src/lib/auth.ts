@@ -139,16 +139,9 @@ export function openNonce(token: string | undefined): SiwsFields | null {
 // Origine du site
 // ---------------------------------------------------------------
 
-/** Origines autorisées : APP_URL (plusieurs possibles, séparées par des virgules) et domaines fournis par Vercel / Railway. */
+/** Origines autorisées : APP_URL (plusieurs possibles, séparées par des virgules) et le domaine fourni par Railway. */
 export function allowedOrigins(): string[] {
-  const hosts = [
-    process.env.VERCEL_PROJECT_PRODUCTION_URL,
-    process.env.VERCEL_BRANCH_URL,
-    process.env.VERCEL_URL,
-    process.env.RAILWAY_PUBLIC_DOMAIN,
-  ]
-    .filter(Boolean)
-    .map((h) => `https://${h}`);
+  const hosts = [process.env.RAILWAY_PUBLIC_DOMAIN].filter(Boolean).map((h) => `https://${h}`);
   const app = (process.env.APP_URL ?? "").split(",").map((u) => u.trim()).filter(Boolean);
   return [...app, ...hosts].flatMap((u) => {
     try {
@@ -161,13 +154,12 @@ export function allowedOrigins(): string[] {
 
 /**
  * Adresse du site pour cette requête, ou null si la requête vient d'ailleurs (CSRF, site imitateur).
- * En production, on accepte les origines configurées, et sur Vercel ou Railway l'adresse par laquelle
- * la requête est arrivée : ces hébergeurs ne font parvenir au site que les domaines rattachés au projet
- * (souvent plusieurs : *.vercel.app, *.up.railway.app, domaine perso). Ailleurs, on ne se fie jamais à
- * l'en-tête Host : un site imitateur pourrait sinon faire signer un message à son propre nom.
+ * En production, on accepte les origines configurées, et sur Railway l'adresse par laquelle la requête
+ * est arrivée : l'hébergeur ne fait parvenir au site que les domaines rattachés au service
+ * (*.up.railway.app, domaine perso). Ailleurs, on ne se fie jamais à l'en-tête Host : un site
+ * imitateur pourrait sinon faire signer un message à son propre nom.
  */
-export const managedHost = (): "vercel" | "railway" | null =>
-  process.env.VERCEL === "1" ? "vercel" : process.env.RAILWAY_ENVIRONMENT_ID ? "railway" : null;
+export const managedHost = (): "railway" | null => (process.env.RAILWAY_ENVIRONMENT_ID ? "railway" : null);
 
 export function siteUrl(req: Request): URL | null {
   const origin = req.headers.get("origin");
