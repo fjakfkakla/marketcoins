@@ -12,6 +12,10 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Programme Solana (Anchor) : testé par `anchor test`, pas par le lint Next.
+    "tests/**",
+    "target/**",
+    "programs/**",
   ]),
 ]);
 

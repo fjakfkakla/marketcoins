@@ -29,7 +29,8 @@ npm install
 npm run dev        # http://localhost:3000
 ```
 
-Autres commandes : `npm run build`, `npm start`, `npm run lint`, `npm run typecheck`.
+Autres commandes : `npm run build`, `npm start`, `npm run lint`, `npm run typecheck`, `npm run test:program`
+(tests du programme Solana non-custodial dans `programs/marketcoins/`, pas encore branché au site : voir son README).
 
 ## Lancement public (chrono)
 

@@ -1,0 +1,22 @@
+[toolchain]
+package_manager = "npm"
+
+[features]
+resolution = true
+skip-lint = false
+
+[programs.localnet]
+marketcoins = "7dVSmyCyEK8dQrTiTqtyjLzTbhTwsL7ftRWyYTLkjUiM"
+
+[programs.devnet]
+marketcoins = "7dVSmyCyEK8dQrTiTqtyjLzTbhTwsL7ftRWyYTLkjUiM"
+
+[provider]
+cluster = "localnet"
+wallet = "~/.config/solana/id.json"
+
+[scripts]
+test = "npx ts-mocha -p ./tests/tsconfig.json -t 1000000 tests/**/*.ts"
+
+[test]
+startup_wait = 10000
