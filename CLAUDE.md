@@ -10,7 +10,8 @@
 Marché de prédiction memecoins (KOLs et coins), USDC sur Solana, 0 % de frais.
 Next.js 16 (App Router), Tailwind v4, Supabase, Solana. On répond et on commit en français.
 
-**Hébergement : Railway, et rien d'autre.** Toutes les variables vivent dans Railway → service → Variables
+**Hébergement : Railway, et rien d'autre.** Prod : https://marketcoins.up.railway.app (service `kolmarket`).
+Toutes les variables vivent dans Railway → service → Variables
 (un changement redéploie tout seul). Pas de Vercel, pas de `vercel.json`, pas de variable à répéter ailleurs.
 Ne jamais réintroduire un deuxième hébergeur ni une doc qui dit de configurer deux endroits.
 

@@ -133,11 +133,12 @@ Les pots se remplissent avec les vraies mises : le seed n'en crée plus.
 
 ## Hébergement : Railway, et rien d'autre
 
-Le site est déployé par Railway à partir de la branche `main`. **Toutes** les variables se mettent dans
+Le site est déployé par Railway à partir de la branche `main`, à l'adresse **https://marketcoins.up.railway.app**
+(l'ancienne copie Vercel `marketscoins.vercel.app` est supprimée). **Toutes** les variables se mettent dans
 Railway → ton service → Variables (voir `.env.example`). Dès qu'une variable change, Railway redéploie le site
 tout seul : rien d'autre à faire, nulle part ailleurs. Pas de Vercel.
 
-Pour vérifier que tout est branché : ouvrir `https://<ton-site>/api/health` (ne montre aucun secret).
+Pour vérifier que tout est branché : ouvrir https://marketcoins.up.railway.app/api/health (ne montre aucun secret).
 
 ### Mise en route pas à pas (devnet)
 
