@@ -41,7 +41,7 @@ et chaque lien vers l'app ouvre « Access opens in: » et le chrono en plein éc
 Le chrono est lancé : l'heure de départ est écrite en dur dans `src/lib/launch.ts` (`LAUNCH_START`,
 2026-10-14T19:00:26Z) et l'accès ouvre 7 jours plus tard. Pour la changer : modifier la date et pousser sur `main`.
 
-**CA du coin** : écrit en dur dans `src/lib/ca.ts`. Il s'affiche dans une fenêtre flottante « Contract address »
+**CA du coin** : écrit en dur dans `src/lib/ca.ts`. Il s'affiche (adresse tronquée, sans libellé) dans une fenêtre flottante
 en haut à droite (landing et app ; en bas à droite sur mobile), avec un bouton Copier ; la croix la replie en pastille « CA ».
 
 ## Pages

@@ -7,8 +7,8 @@ import { useI18n } from "@/i18n/client";
 
 /**
  * Fenêtre flottante du contract address : en haut à droite sous la barre du haut (`top`, ordinateur),
- * en bas à droite sur mobile pour ne pas cacher le titre.
- * Un clic copie l'adresse complète ; la croix la replie en pastille « CA ».
+ * en bas à droite sur mobile pour ne pas cacher le titre. Pas de libellé « Contract address » :
+ * seulement l'adresse tronquée. Un clic copie l'adresse complète ; la croix la replie en pastille « CA ».
  */
 export function CaFloat({ ca, top }: { ca: string; top: string }) {
   const { t } = useI18n();
@@ -40,14 +40,13 @@ export function CaFloat({ ca, top }: { ca: string; top: string }) {
       className={`fade-up fixed bottom-4 right-3 z-40 md:bottom-auto flex items-center gap-2.5 rounded-[18px] border border-line bg-white/95 py-2 pl-2 pr-1.5 shadow-[0_24px_50px_-22px_rgba(5,18,60,.6)] backdrop-blur-md md:right-6 md:gap-3 md:py-2.5 md:pl-2.5 ${top}`}
     >
       <LogoMark size={30} />
-      <button type="button" onClick={copy} title={ca} className="group min-w-0 text-left leading-tight">
-        <span className="flex items-center gap-1.5 text-[11px] font-bold text-faint md:text-[12px]">
-          <span className="h-1.5 w-1.5 rounded-full bg-up" />
-          Contract address
-        </span>
-        <span className="block font-display text-[14px] font-extrabold tracking-tight text-ink transition group-hover:text-blue md:text-[15px]">
-          {ca.slice(0, 5)}…{ca.slice(-5)}
-        </span>
+      <button
+        type="button"
+        onClick={copy}
+        title={ca}
+        className="min-w-0 font-display text-[14px] font-extrabold leading-none tracking-tight text-ink transition hover:text-blue md:text-[15px]"
+      >
+        {ca.slice(0, 5)}…{ca.slice(-5)}
       </button>
       <button
         type="button"
